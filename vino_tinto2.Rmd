@@ -1,0 +1,665 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Base de datos de vinos.
+```{r}
+#file.choose()
+ruta_csv<-"C:\\Users\\ferna\\OneDrive\\Escritorio\\MBA\\IMF\\BBDD\\Alimentación\\winequality-red.csv"
+datos = read.csv(ruta_csv, sep = ";")
+summary(datos)
+```
+Instalamos y cargamos librerías
+
+```{r,warning=FALSE}
+if(!require("data.table")) install.packages("data.table")
+if(!require("kableExtra")) install.packages("kableExtra")
+if(!require("ggridges")) install.packages("ggridges")
+if(!require("wesanderson")) install.packages("wesanderson")
+if(!require("ggthemes")) install.packages("ggthemes")
+if(!require("purrr")) install.packages("purrr")
+if(!require("tidyr")) install.packages("tidyr")
+if(!require("ggplot2")) install.packages("ggplot2")
+if(!require("corrplot")) install.packages("corrplot")
+if(!require("car")) install.packages("car")
+if(!require("fastDummies")) install.packages("fastDummies")
+
+
+```
+
+
+```{r,warning=FALSE}
+library(data.table) 
+library(kableExtra)
+library(ggridges)
+library(ggplot2)
+library(ggthemes)
+library(wesanderson)
+library(purrr)
+library(tidyr)
+library(dplyr)
+library(lmtest)
+library(corrplot)
+library(car)
+library(caret)
+library(MASS)
+library(fastDummies)
+```
+
+
+
+
+Creamos una variable categórica que nos será útil más adelante
+
+
+```{r}
+datos$Calidad = datos$quality
+datos$Calidad[datos$Calidad=="3"] = "Malo"
+datos$Calidad[datos$Calidad=="4"] = "Malo"
+datos$Calidad[datos$Calidad=="5"] = "Regular"
+datos$Calidad[datos$Calidad=="6"] = "Regular"
+datos$Calidad[datos$Calidad=="7"] = "Bueno"
+datos$Calidad[datos$Calidad=="8"] = "Bueno"
+```
+
+
+Cambiamos los nombres de las variables.
+
+```{r}
+setnames(datos, "fixed.acidity", "Acidez_Fija")
+names(datos)[2]= "Acidez_Volatil"
+names(datos)[3]= "Acido_Citrico"
+names(datos)[4] ="Azucar_Residual"
+setnames(datos, "chlorides", "Cloruros")
+setnames(datos, "free.sulfur.dioxide", "Sulfuroso")
+setnames(datos, "total.sulfur.dioxide", "Sulfuroso_Total")
+setnames(datos, "density", "Densidad")
+setnames(datos, "sulphates", "Sulfatos")
+setnames(datos, "quality", "Calidad")
+names(datos)[11]='Alcohol'
+names(datos)[13]='Calidad_Categorica'
+
+head(datos)
+```
+
+
+
+
+```{r}
+descVinos = data.frame("Variable" = colnames(datos), "Tipo" = c(rep("Cuantitativa Discreta",10),"Cuantitativa Continua","Categórica",'Dicotómica'))
+```
+
+
+```{r}
+Variables = descVinos[,1]
+Tipos = descVinos[,2]
+Resum_Var=cbind(data.frame(Variables),data.frame(Tipos))
+```
+
+
+** Objetivo y definición de las variables**
+
+El objetivo de este estudio es determinar que factores son los influyentes sobre la calidad de un vino. Para ello utilizaremos la BBDD winequality-red.csv
+
+Los parámetros que expresan la calidad de un vino se definen a continuación:
+
+#Grado Alcohólico:
+Normalmente tienen entre 12 y 16 º de Alcohol, y es común que esto determine el tipo de vinos que les gustan (más o menormente alcohólicos). Durante la maduración de la uva, la cual se ve acrecentada en las zonas donde hay más horas de sol, los ácidos se transforman en azúcares. Posteriormente, durante la fermentación, los azúcares pasan a formar alcohol.
+
+#Acidez Volátil:
+Conformada principalmente por acido acético (g ácido acético/100 mL), este debe ser lo más bajo posible además de permanecer estable para ayudar en la conservación del vino, si los ácidos aumenta en cata podremos percibirlos en nariz y boca como avinagrados.
+
+#Acidez Fija:
+Es el conjunto de ácidos naturales del vino (tartárico, málico, cítrico, succínico y láctico). El más importante de todos ellos es el ácido tartárico, de ahí que la medición de la acidez fija se haga en gramos de éste por litro. 
+Gracias a los ácidos que conforman la acidez fija se preservan las cualidades naturales del vino, así como el color.
+
+#Ácido Cítrico: (E-330) 
+ Entre los ácidos de origen natural es el tercero en importancia. El ácido cítrico está presente en vinos y uvas en concentraciones entre 0,1-1 g/l. D. Aporta al vino frescura, sensaciones agradables, frutales, además de aromáticas.
+ Es un acidificante para corregir la acidez en mostos y vinos, además posee una acción estabilizante como antioxidante.
+
+#Cloruros
+
+#Densidad:
+Sirve principalmente para determinar el fin de la fermentación.
+
+#Cloruros:
+Las sales minerales del vino confieren, obviamente, el característico sabor salado del vino. Se mide en mg/L
+
+#pH:
+Es importante en su percepción de calidad pues se expresa como equilibrio en boca entre acidez y astringencia. Aunque el Ph depende de muchos factores (tipo de suelo, variedad de uva, maduración de la uva, entre otros), bien balanceado hará vinos redondos y untuosos, y es un parámetro de calidad buscado siempre.
+
+#Sulfatos:
+La vid absorbe por la raíz sulfatos (sales), que llegan a las uvas. Ya en el mosto, las levaduras, al fermentar, quitan todo el oxígeno del medio y reducen los compuestos, pasando los sulfatos a sulfitos; luego de éstos hacen azufre, y del azufre, sulfhídrico. Terminada la vinificación, y atravesando el vino su reposo, el sulfhídrico se oxida y aparecen partículas de azufre, que pasa a sulfuroso. Así, el vino puede llegar a contener en forma natural, entre aproximadamente 10 y 20 mg por litro de sulfuroso.
+
+
+
+#Sulfuroso Total:
+El anhídrido sulfuroso es un compuesto de azufre y oxígeno, que añadido en el mosto o vino en las dosis adecuadas y permitidas, cumple tareas antioxidantes, antisépticas, y desinfectantes. Es el protector del vino por excelencia.
+El sulfuroso total se compone del sulfuroso libre (que ejerce la acción antiséptica y antimicrobiana) y el combinado.
+#Sulfuroso Libre:
+En contrapartida, su utilización en forma desmedida o incorrecta, puede producir olores y sabores defectuosos, y un “picor” en la nariz. Por otra parte, la acidez volátil, por ende el peligro de avinagrado, sube cuando baja de 10 mg/l el sulfuroso “libre”, siendo muy importante vigilar ese valor.
+Un pH igual a 4,0, la concentración de SO2 Molecular (libre), es diez veces menor que a un pH igual a 3,0, por lo tanto lo es también su acción.
+
+Los tipos de variables son:
+
+```{r}
+Resum_Var %>%
+  kbl(caption = "Resumen Variables") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+Como ya se a mencionado, a continuación, realizaremos las  pruebas pertinentes para determinar las variables más influyentes sobre el vino.
+
+Datos Faltantes:
+
+```{r}
+sum(is.na(datos))
+```
+
+
+
+Datos Atípicos:
+A la hora de reunir la información, puede parecer conveniente introducir todos los boxplot en un mísmo gráfico.
+```{r}
+
+datos %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_boxplot(outlier.colour="red",
+                outlier.size=1.5)
+```
+Sin embargo, al poseer tantas variables, el resultado es confuso por lo que los insertaremos todos en un mismo chunk de forma individual
+
+
+```{r}
+ggplot(datos,aes(x=Densidad))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Acidez_Fija))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Acidez_Volatil))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Acido_Citrico))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Azucar_Residual))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Cloruros))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Sulfuroso))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Sulfatos))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Sulfuroso_Total))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=pH))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+ggplot(datos,aes(x=Alcohol))+geom_boxplot(outlier.colour="red", outlier.size=1.5)
+```
+
+Todas las gráficas poseen outliers, sin embargo algunas variables no tienen unos valores tan aislados como la mayoría:
+Acidez_Fija, pH, y Alcohol
+La eliminación de otuliers se realizará teniendo en cuenta aquellos vinos que aparecen como outliers en más de una variable.
+
+```{r}
+out <- boxplot.stats(datos$Acidez_Fija)$out 
+out2 <- boxplot.stats(datos$Acidez_Volátil)$out
+out3 <- boxplot.stats(datos$Azucar_Residual)$out
+out4 <-  boxplot.stats(datos$Cloruros)$out
+out5 <-  boxplot.stats(datos$Sulfuroso)$out
+out6 <-  boxplot.stats(datos$Sulfuroso_Total)$out
+out7 <-  boxplot.stats(datos$Densidad)$out
+out8 <-  boxplot.stats(datos$pH)$out
+out9 <-  boxplot.stats(datos$Sulfatos)$out
+out10 <-  boxplot.stats(datos$Alcohol)$out
+out11 <-  boxplot.stats(datos$Acido_Citrico)$out
+out_ind <- which(datos$Acidez_Fija %in% c(out))
+out_ind2 <- which(datos$Acidez_Volatil %in% c(out2))
+out_ind3 = which(datos$Azucar_Residual %in% c(out3))
+out_ind4 = which(datos$Cloruros %in% c(out4))
+out_ind5 = which(datos$Sulfuroso %in% c(out5))
+out_ind6 = which(datos$Sulfuroso_Total %in% c(out6))
+out_ind7 = which(datos$Densidad %in% c(out7))
+out_ind8 = which(datos$pH %in% c(out8))
+out_ind9 = which(datos$Sulfatos %in% c(out9))
+out_ind10 = which(datos$Alcohol %in% c(out10))
+out_ind11 = which(datos$Acido_Citrico %in% c(out11))
+vector = c()
+vector = c(vector,out_ind)
+vector = c(vector,out_ind2)
+vector = c(vector,out_ind3)
+vector = c(vector,out_ind4)
+vector = c(vector,out_ind5)
+vector = c(vector,out_ind6)
+vector = c(vector,out_ind7)
+vector = c(vector,out_ind8)
+vector = c(vector,out_ind9)
+vector = c(vector,out_ind10)
+vector = c(vector,out_ind11)
+which(duplicated(vector))
+datos = datos[-vector,]
+```
+Con 'boxplot.stats' se sacan los valores fuera de los boxplots
+Con  which saco el indice, y luego meto todos los indices en el mismo vector
+Los valores duplicados, se sacan y se eliminan de la base de datos
+
+```{r}
+b<-table(datos$Calidad_Categorica[vector])
+a<-table(datos$Calidad_Categorica)
+b/(a+b)
+```
+Vemos que aproximadamente, eliminamos una fracción de outliers similar en cada categoría.
+
+
+
+
+
+
+Realizamos un sencillo gráfico de correlaciones para orientarnos a cerca de que variables son las más relevantes respecto a la calidad.
+
+```{r}
+mcor = cor(datos[1:12])
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(mcor, method="color", col=col(200),  
+     diag=FALSE, # tl.pos="d", 
+         type="lower", order="hclust", 
+     title='Correlacion')
+```
+Parece que Alcohol, Acidez_Volatil y Acico_Citrico poseen mayor correlación respecto a la Calidad.
+
+Para asegurarnos de que los valores de las variables se encuentran dentro de intervalos de confianza coherentes realizaremos:
+
+```{r}
+print('Acidez_Volatil')
+t.test(datos$Acidez_Volatil)$conf.int
+```
+#- Acidez_Volatil:
+Se asegura al 95% que la Acidez_Volatil de los vinos está entre 0.52 y 0.54 g/l. La acidez volátil calcula el ácido acético de un vino. Los valores normales van de 0,30 a 0,60 g/l. Cuando un vino está picado (debido a una alteración o a un envejecimiento excesivo en barricas de roble) presenta una acidez volátil por encima de 1 g/l y aromas que recuerdan al vinagre y al barniz. Los valores son aceptables.
+
+```{r}
+print('Alcohol')
+t.test(datos$Alcohol)$conf.int
+```
+
+#Alcohol:
+Se asegura al 95% que el Alcohol de los vinos está entre 10.314 y 10.424 - Aunque la graducación es aceptable, puesto que los vinos suelen encontrarse entre los 10-14º, se trata de vino tinto bastante suave, puesto que normalmente, el vino tinto se encuentra entre los 12-13º.
+
+```{r}
+print('Acido_Citrico')
+t.test(datos$Acido_Citrico)$conf.int
+```
+# Acido_Citrico: 
+Como hemos comentado anteriormente, el Acido_Citrico en los vinos, se encuentra en cantidades de entre 0.1 y 1 g/L, por lo que comprobar que el 95% de los vinos tiene valores de Acido_Citrico de entre 0.237 y 0.257 es un resultado positivo.
+
+
+```{r}
+print('pH')
+t.test(datos$pH)$conf.int
+```
+#pH:
+El pH  de un vino tinto entre 3,3 y 3,6.
+Nuestro intervalo de confianza nos indica que el 95% de los valores se encuentran entre 3.317 y 3.333
+
+```{r}
+print('Sulfatos')
+t.test(datos$Sulfatos)$conf.int
+```
+
+#Sulfatos:
+Se asegura al 95% que los Sulfatos de los vinos están entre 0.625 y 0.638 g/l. El nivel de sulfatos es correcto puesto que estos pueden alcanzar como máximo 1 g/l.
+
+```{r}
+print('Sulfuroso_Total')
+t.test(datos$Sulfuroso_Total)$conf.int
+```
+
+#Sulfuroso_Total:
+La concentración limitada total de sulfuroso es de hasta 160 mg/L en los vinos tintos por lo que al comprobar al 95% que el Sulfuroso_Total de los vinos está entre 40.607 y 43.557, podemos decir que la concentración es adecuada.
+
+
+
+A continuación representamos las gráficas de relación que la calidad tiene con algunas de las variables que creemos más significativas
+
+```{r}
+#Alcohol 
+AlcoholQ<-ggplot(data = datos, aes(x =Calidad , y =Alcohol)) +
+     ggtitle(Alcohol~Calidad)+
+
+ geom_jitter(aes(color = Calidad_Categorica))+
+  theme_few()+scale_color_brewer(type = "Qual", palette = "Accent")+  
+  theme_hc(bgc = 'darkunica') +
+  theme(text = element_text(size = 9))
+AlcoholQ
+
+r.ohq = lm(datos$Calidad~datos$Alcohol)
+summary(r.ohq)
+```
+El Alcohol posee una clara tendencia ascendente. Su p-value tiene el máximo nivel de significancia por lo que podemos decir que a mayor cantidad de alcohol, mejor será la calidad del vino.
+
+
+```{r}
+#Acidez_Volatil
+ Acidez_VolatilQ<-ggplot(data = datos, aes(x =Calidad , y =Acidez_Volatil)) +
+      ggtitle(Acidez_Volatil~Calidad)+
+ geom_jitter(aes(color = Calidad_Categorica))+
+  theme_few()+scale_color_brewer(type = "Qual", palette = "Accent")+  
+  theme_hc(bgc = 'darkunica') +
+  theme(text = element_text(size = 9))
+Acidez_VolatilQ
+```
+
+
+```{r}
+r.ch3q = lm(datos$Calidad~datos$Acidez_Volatil)
+summary(r.ch3q)
+```
+La Acidez_Volatil también tiene el máxio nivel de significancia. Sin embargo, su tendencia es negativa. Cuanto menor Acidez_Volátil mejor calidad la del vino. Las bacterias acéticas, son las responsables de la generación del ácido acético que da lugar a la Acidez_Volatil, y un avinagramiento del sabor y olor del vino. Es importante evitar la colonización de estas bacterias. Variables como el Alcohol o el Sulfuroso_Total, tienen esta capacidad, por lo que más adelante estudiaremos su relación.
+
+```{r}
+#Acido_Citrico
+ Acido_CitricoQ<-ggplot(data = datos, aes(x=Calidad, y=Acido_Citrico))+
+   ggtitle(Acido_Citrico~Calidad)+
+   geom_jitter(aes(color = Calidad_Categorica))+
+  theme_few()+scale_color_brewer(type = "Qual", palette = "Accent")+  
+  theme_hc(bgc = 'darkunica') +
+  theme(text = element_text(size = 9))
+Acido_CitricoQ
+```
+
+
+```{r}
+r.clq = lm(datos$Calidad~datos$Acido_Citrico)
+summary(r.clq)
+```
+El Acido_Citrico también tiene el máximo nivel de significancia en cuanto a su p-value, y su tendencia también es ascendente
+
+```{r}
+#pH
+  pHQ<-ggplot(data = datos, aes(x=Calidad, y=pH))+
+   ggtitle(pH~Calidad)+
+   geom_jitter(aes(color = Calidad_Categorica))+
+  theme_few()+scale_color_brewer(type = "Qual", palette = "Accent")+  
+  theme_hc(bgc = 'darkunica') +
+  theme(text = element_text(size = 9))
+pHQ
+```
+
+
+```{r}
+r.pHq = lm(datos$Calidad~datos$pH)
+summary(r.pHq)
+```
+p-value: 0.00166<0.05 - Mediante la gráfica, observamos que su tendencia es ligeramente descendente, sin embargo es un valor que se mantiene bastante horizontal, en un rango bien delimitado.
+
+```{r}
+#Sulfatos
+  SulfatosQ<-ggplot(data = datos, aes(x=Calidad, y=Sulfatos))+
+   ggtitle(Sulfatos~Calidad)+
+   geom_jitter(aes(color = Calidad_Categorica))+
+  theme_few()+scale_color_brewer(type = "Qual", palette = "Accent")+  
+  theme_hc(bgc = 'darkunica') +
+  theme(text = element_text(size = 9))
+
+SulfatosQ
+```
+
+
+```{r}
+r.sq = lm(datos$Calidad~datos$Sulfatos)
+summary(r.sq)
+```
+
+Su nivel de significancia es el máximo y su tendencia es ascendente. Sin duda, los sulfatos son importantes puesto que al reducirse durante la fementación, darán lugar a los sulfitos, conservantes naturales que luego pasará a sulfuroso.
+
+```{r}
+#Sulfuroso_Total
+  Sulfuroso_TotalQ<-ggplot(data = datos, aes(x=Calidad, y=Sulfuroso_Total))+
+   ggtitle(Sulfuroso_Total~Calidad)+
+   geom_jitter(aes(color = Calidad_Categorica))+
+  theme_few()+scale_color_brewer(type = "Qual", palette = "Accent")+  
+  theme_hc(bgc = 'darkunica') +
+  theme(text = element_text(size = 9))
+Sulfuroso_TotalQ
+```
+
+
+```{r}
+r.so2tq = lm(datos$Calidad~datos$Sulfuroso_Total)
+summary(r.so2tq)
+```
+Dentro de las variables analizadas, esta es la que más difiere en cuanto a tendencia del resto. A pesar de que su significancia es muy relevante, la distribución se encuentra próxima a la normal. Esto puedría deberse a que aunque el Sulfuroso se encuentra de manera natural en el vino, también es un aditivo que se añade a demanda. Es por eso que los vinos de baja calidad tienen bajo sulfuroso y como consecuencia elevados grados de Acidez_Volátil, y los de buena calidad, no precisan de este aditivo debido a su elevado contenido en Alcohol, por lo que en la gráfica se ve representado con menor valor.
+
+
+#Como hemos visto, los vinos pueden guardar relación entre sus variables. Es por eso que a continuación hemos realizado la regresión de las variables que podrían ser más influyentes con el propósito de encontrar cuáles guardan una relación lineal entre si.
+
+Empezaremos con el Alcohol:
+#Alcohol~ Acidez_Volatil + Sulfuroso_Total 
+
+```{r}
+gg.CH3OH<-ggplot(datos, aes(x = Acidez_Volatil, y = Alcohol,group = Calidad_Categorica, color = Calidad_Categorica)) +
+  ggtitle('Alcohol~Acidez_Volatil') + 
+  theme_few()+scale_color_brewer(type = "Qual", palette = "Accent")+  
+  theme_hc(bgc = 'darkunica') +
+  theme(text = element_text(size = 9))+
+  geom_smooth(method = 'lm')+
+  geom_jitter()
+gg.CH3OH
+```
+
+
+```{r}
+r.CH3OH = lm(datos$Acidez_Volatil~datos$Alcohol)
+summary(r.CH3OH)
+```
+
+Como podemos ver, el Alcohol guarda una relación lineal significativa con la Acidez_Volatil. Destaca la linea de tendencia de la Calidad_Categórica 'Bueno' cuyos intervalos de confianza no se ven solapados por los de las calidad 'Regular' y 'Malo'.
+H0: No hay una relación lineal entre Alcohol y Acidez_Total
+P-value: 5.227e-12 < 0.05 -> Se rechaza hipostesis nula
+Se puede afirmar que existe tal relación.
+
+
+```{r}
+gg.SO2tOH<-ggplot(datos, aes(x = Sulfuroso_Total, y = Alcohol,group = Calidad_Categorica, color = Calidad_Categorica)) +
+  ggtitle('Alcohol~Sulfuroso_Total') + 
+  theme_few()+scale_color_brewer(type = "Qual", palette = "Accent")+  
+  theme_hc(bgc = 'darkunica') +
+  theme(text = element_text(size = 9))+
+  geom_smooth(method = 'lm')+
+  geom_jitter()
+gg.SO2tOH
+```
+
+
+```{r}
+r.SO2tOH = lm(datos$Sulfuroso_Total~datos$Alcohol)
+summary(r.SO2tOH)
+```
+
+Lo mismo pasa con el Sulfuroso_Total.
+H0: No hay una relación lineal entre Alcohol y Sulfuroso_Total
+P-value: <2.2e-16 < 0.05 -> Se rechaza hipostesis nula
+Se puede afirmar que existe tal relación.
+
+
+
+-MODELO DE REGRESIÓN LINEAL MULTIPLE-
+
+
+Para asegurarnos de las afirmaciones anteriormente realizadas, estudiamos la relacion lineal de todas las variables con la Calidad
+```{r}
+linear_quality = lm(Calidad ~ Acidez_Fija+Acidez_Volatil+Acido_Citrico+Azucar_Residual+Cloruros+Sulfuroso+Sulfuroso_Total+Densidad+pH+Sulfatos+Alcohol, data=datos)
+summary(linear_quality)
+```
+Comprobamos que además  las variables más significativas son:Alcohol, Acidez_Volatil, Acido_Citrico, Sulfuroso_Total y pH.
+Si creamos un modelo con estas variables exclusivamente, comprovamos que el modelo no cambia prácticamente.
+
+```{r}
+linear_quality2 = lm(Calidad ~ Acidez_Volatil+Acido_Citrico+Sulfuroso_Total+pH+Sulfatos+Alcohol, data=datos)
+summary(linear_quality2)
+```
+Otra forma de determinar el modelo es mediante el método "backward". Este elimina paso a paso aquellas variables que no son relevantes.
+
+```{r}
+step(object = linear_quality,direction="backward",trace=1)
+```
+
+De este modo, se determina que el método backward prácticamente coincide con el nuestro. Las variables que mejor definen el modelo, son las que ya habíamos contemplado, añadiendole el Sulfuroso.
+
+```{r}
+ModeloFinal = lm(Calidad ~Acidez_Volatil + Acido_Citrico + Sulfuroso_Total + Sulfuroso + pH + Sulfatos + Alcohol, data=datos)
+summary(ModeloFinal)
+```
+
+#Solo 7 atributos estan correlacionados de forma significativa con la Calidad.
+
+Correlación positiva: Sulfuroso, Sulfatos, y Alcohol, Acido_Citrico
+Correlación negativa: Acidez_Volatil, Sulfuroso_Total, pH
+
+
+Efectivamente, tras añadir el sulfuroso el modelo pasa de explicar del 38.98% al 39.1% de la puntuación del vino.
+
+
+
+
+
+
+PROBLEMAS DE MULTICOLINEALIDAD
+
+Es comúnmente aceptado que valores del FIV superiores a 10 indicarían que el grado de multicolinealidad presente en el modelo es preocupante.
+
+```{r}
+vif(ModeloFinal)
+```
+Puesto que no es el caso, aceptamos que no existe multicolinealidad.
+
+
+
+Para corroborar las preconclusiones utilizaremos anova
+
+
+-----------------------------------------ANOVA-----------------------------------------------------
+
+
+Una vez establecido nuestro modelo y hemos determinado los factores relevantes a la hora establecer la calidad de los vinos, procedemos a comprobar si la diferencia de las medias entre divisiones de la Calidad_Categorica, son significativas. Para ello, en primer lugar realizamos un boxplot sobre las variables para hacernos una idea.
+
+
+
+```{r}
+ggplot(data = datos, mapping = aes(x = Calidad_Categorica, y = Alcohol)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 0.3, color = "tomato") +
+ggtitle('Boxplot: Calidad_Categorica~Alcohol')
+ggplot(data = datos, mapping = aes(x = Calidad_Categorica, y = Acidez_Volatil)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 0.3, color = "tomato") +
+  ggtitle('Boxplot: Calidad_Categorica~Acidez_Volatil')
+ggplot(data = datos, mapping = aes(x = Calidad_Categorica, y = Acido_Citrico)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 0.3, color = "tomato") +
+  ggtitle('Boxplot: Calidad_Categorica~Acido_Citrico')
+ggplot(data = datos, mapping = aes(x = Calidad_Categorica, y = pH)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 0.3, color = "tomato") +
+  ggtitle('Boxplot: Calidad_Categorica~pH')
+ggplot(data = datos, mapping = aes(x = Calidad_Categorica, y = Sulfatos)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 0.3, color = "tomato") +
+  ggtitle('Boxplot: Calidad_Categorica~Sulfatos')
+ggplot(data = datos, mapping = aes(x = Calidad_Categorica, y = Sulfuroso)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 0.3, color = "tomato") +
+  ggtitle('Boxplot: Calidad_Categorica~Sulfuroso')
+ggplot(data = datos, mapping = aes(x = Calidad_Categorica, y = Sulfuroso_Total)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 0.3, color = "tomato") +
+  ggtitle('Boxplot: Calidad_Categorica~Sulfuroso_Total')
+```
+Podemos observar que mientras que los Sulfatos y el Alcohol (variables con una relación positiva respecto a la Calidad) mantienen valores muy similares entre la Calidad_Categorica Malo y Regular, y la Calidad_Categorica Bueno se diferencia en cuanto a su media. Por el contrario, la Acidez_Volátil (variable con una relación negativa respecto a la Calidad) mantiene valores similares entre la Calidad_Categorica Bueno y Regular, y la Calidad_Categórica Malo se diferencia en cuanto a su media.
+El pH es una variable muy constante, por los que sus medias son muy similares entre Calidad_Categorica.
+Por otro lado, cuando hablamos de Sulfuroso y Sulfuroso total, como hemos comentado son variables especiales, que se adicionan a demanda para garantizar la conservación de este, por lo que su comportamiento es distinto.
+Por último el Acido_Citrico es la variable que muestra un comportamiento más ambiguo.
+
+Para obtener un data específico de las medias usaremos tapply:
+
+```{r}
+print('Alcohol')
+tapply(datos$Alcohol,datos$Calidad_Categorica,mean)
+print('Acidez_Volatil')
+tapply(datos$Acidez_Volatil,datos$Calidad_Categorica,mean)
+print('Acido_Citrico')
+tapply(datos$Acido_Citrico,datos$Calidad_Categorica,mean)
+print('pH')
+tapply(datos$pH,datos$Calidad_Categorica,mean)
+print('Sulfatos')
+tapply(datos$Sulfatos,datos$Calidad_Categorica,mean)
+print('Sulfuroso')
+tapply(datos$Sulfuroso,datos$Calidad_Categorica,mean)
+print('Sulfuroso_Total')
+tapply(datos$Sulfuroso_Total,datos$Calidad_Categorica,mean)
+
+```
+
+```{r}
+datos$Calidad_Categorica = as.factor(datos$Calidad_Categorica)
+anova = aov(lm(Acidez_Volatil + Acido_Citrico + Sulfuroso_Total + 
+    Sulfuroso + pH + Sulfatos + Alcohol~Calidad_Categorica,data=datos))
+summary(anova)
+```
+Tras realizar anova, comparamos el F value (calculado) con el qf (F crítico). Si Fvalue es mayor que qf rechazaremos la Ho:
+HO - No hay diferencias significativas entre los diferentes grupos.
+```{r}
+qf(0.05, 2-1, 1201-2, lower.tail = F)
+```
+ En nuetro caso 18.37 es mucho mayor que el valor crítico obtenido, lo cual significa que al menos una de las medias será diferente al resto. Es por eso que para saber dónde se da esta diferencia, relaizaremos el TukeyHSD
+
+
+
+Si hemos detectado diferencias significativas entre las medias de las poblaciones. ¿Sería posible saber cuáles son los grupos que generan estas diferencias?
+determinar entre qué condiciones experimentales hay diferencias significativas. Para ello, emplearemos el método de Tukey.
+
+```{r}
+intervals = TukeyHSD(anova)
+intervals
+```
+Las diferencias entre medias en las que el intervalo de confianza que engloba los límites inferior y superior no contienen el valor 0, son estadísticamente significativas con el método de Tukey. En nuestro caso, son las diferencias entre los grupos 'Regular-Bueno', y entre los grupos 'Regular-Malo'. Esto puede verse también si trazamos los intervalos de confianza gráficamente. Para ello emplearemos la función plot
+
+
+
+```{r}
+plot(intervals)
+```
+Las diferencias significativas serán aquellas para las que el punto final lwr sea positivo.
+
+```{r}
+plot(anova$residuals)
+```
+
+H0: La población sigue una distribución normal. Rechazamos hipotesis nula por el p-value
+
+```{r}
+shapiro.test(anova$residuals)
+```
+El shapiro test nos muestra que la distribución no es normal. 
+A medida que aumentan los tamaños de la muestra, la distribución muestral de la media converge en la distribución normal y la normalidad de las puntuaciones brutas (dentro de los grupos) se vuelve cada vez menos importante. Pero al mismo tiempo, la prueba de normalidad tiene cada vez más poder y, por lo tanto, detectará desviaciones sin importancia de la normalidad.
+El procedimiento ANOVA con factores fijos y tamaños de las muestras iguales funciona bastante bien incluso cuando se viola el supuesto de normalidad, a menos que una o más de las distribuciones sean altamente asimétricas o las varianzas sean muy diferentes.
+
+```{r}
+boxplot(anova$residuals~datos$Calidad)
+```
+Rechazamos hipotesis nulas de que las varianzas son iguales.
+
+El test de bartlett permite contrastar la igualdad de varianzas en 2 o más poblaciones sin ser necesario que el tamaño de todas las muestras sea el mismo
+
+```{r}
+bartlett.test(anova$residuals ~ datos$Calidad)
+```
+Con el barlett test confirmamos que nuestras varianzas no son iguales puesto que el p-value es mucho menor a 0.05.
+
+--------------------------------------------------
+
+RESUMENT DE LOS RESULTADOS:
+
+Tras haber realizado este experimento, se ha resuelto el principal objetivo de este ejercicio: Determinar cuales son las variables más influyentes en la calidad del vino. Es decir, se han encontrado las condiciones experimentales con las que se consigue un valor extremo en la variable de interés o respuesta.
+
+Estas variables que afectan a la Calidad, repetimos que son: Alcohol, Acidez_Volatil, Acido_Citrico, pH, Sulfatos, Sulfuroso, y Sulfuroso_Total.
+
+METODOLOGÍA Y TÉCNICAS APROPIADAS:
+
+Sin embargo la variabilidad típica de la naturaleza del problema ha dado como resultado una distribución no normal. Del mismo modo, las varianzas de los grupos tambien han mostrado ser diferentes, por lo que la representatividad de nuestro test anova a la hora de determinar las diferencias significativas entre los intervalos se ha visto afectada.
+
+Visto esto, deberíamos usar otro tipo de test para comparar los intervalos de confianza y determinar la significidad de las diferencias entre grupos. A pesar de esto, anova es el único test tratado en los temas teóricos
+
+
+
